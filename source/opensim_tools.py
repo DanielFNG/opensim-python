@@ -1,8 +1,11 @@
-"""Python wrappers for a subset of the suite of OpenSim tools."""
+"""Python wrappers for a subset of the suite of OpenSim tools.
+
+"""
 import math
 import os
 import tempfile
 import xml.etree.ElementTree as ET
+from abc import ABC, abstractmethod
 from typing import Optional
 
 import opensim
@@ -15,14 +18,19 @@ _SUPPORTED_TOOLS = [
     "AnalyzeTool",
     "InverseDynamicsTool",
 ]
+_POINT_ACTUATORS = ["FX", "FY", "FZ"]
 _TIMERANGE = [-math.inf, math.inf]
+
+
+def _get_classname_from_xml(xml: ET.ElementTree) -> str:
+    root = xml.getroot()
+    return root[0].tag
 
 
 def _get_tool(settings: str):
     """Parse settings file to find correct OpenSim tool function."""
     xml = ET.parse(settings)
-    root = xml.getroot()
-    name = root[0].tag
+    name = _get_classname_from_xml(xml)
     if name not in _SUPPORTED_TOOLS:
         raise ValueError(f"Tool ({name}) not supported.")
     return getattr(opensim, name)
@@ -81,11 +89,11 @@ def _first_directed_element(element: ET.Element, directions: list) -> ET.Element
     return element
 
 
-def modify_rra_actuators(model, actuators_in, actuators_out):
-    """Adjust the location of point actuators in an RRA actuator file to match an input model
+def _modify_actuators(model, actuators_in, actuators_out):
+    """Adjust the location of specific point actuators in an actuator file to match an input model
 
-    This function assumes that point actuators are applied to only one body. This should hold
-    for RRA actuator files by the nature of the algorithm.
+    This function assumes that at least one 'hand-of-god' point actuator is available, with a name
+    drawn from _TOOL_ACTUATORS = [FX, FY, FZ, MX, MY, MZ], as is OpenSim convention.
     """
     # Load XML & get root element
     xml = ET.parse(actuators_in)
@@ -117,7 +125,217 @@ def modify_rra_actuators(model, actuators_in, actuators_out):
     xml.write(actuators_out)
 
 
+def _modify_actuators_new(loaded_model: opensim.Model) -> None:
+    # Get point actuators
+    force_set = loaded_model.updForceSet()
+    point_actuators = [
+        force for force in force_set if force.getName() in _POINT_ACTUATORS
+    ]
+    if not point_actuators:
+        return
+
+    # Get the body of application
+    body_str = point_actuators[0].get_body()
+
+    # Get the CoM of that body in the input model
+    body = loaded_model.getBodySet().get(body_str)
+    com = body.getMassCenter()
+
+    # Update the application point of each point actuator
+    for point_actuator in point_actuators:
+        point_actuator.set_point(com)
+
+
+class _AbstractToolWrapper(ABC):
+    """Abstract interface for tools which inherit from opensim.AbtractTool
+
+    A note on the behaviour of optional arguments:
+        If timerange = None, the [-inf, inf] is used, resulting in processing of the entire file.
+        If grfs = None, the tool is run with no GRFs.
+        If load = None, the default load file present in the tool is left as is.
+    """
+
+    tool: opensim.AbstractTool
+    settings: str
+
+    def __init__(
+        self,
+        settings: str,
+        model_in: str,
+        output: str,
+        grfs: str = "",
+        load: Optional[str] = None,
+        timerange: Optional[list] = None,
+    ):
+        self.settings = settings
+        self.initialise_tool()
+        self.pre_load(model_in, grfs, load)
+        self.load()
+        self.modify_actuators()
+        self.set_parameters(timerange, output)
+
+    @abstractmethod
+    def initialise_tool(self):
+        """Abstract method for creating tool from the appropriate OpenSim class."""
+
+    def pre_load(self, model_in: str, grfs: str = "", load: Optional[str] = None):
+        """Assigning of variable parameters (model, grfs) before loading."""
+        self.tool.setModelFilename(model_in)
+        if load is not None:
+            self.tool.setExternalLoadsFileName(load)
+        loads = self.tool.updExternalLoads()
+        loads.setDataFileName(grfs)
+
+    def load(self) -> opensim.Model:
+        """Common interface for loading a model & updating model forces."""
+        self.tool.loadModel(self.settings)
+        model = self.tool.getModel()
+        self.tool.updateModelForces(model, self.settings)
+        return model
+
+    def modify_actuators(self):
+        """Adjust point actuator points of action to match those of the model
+
+        Model must have been loaded before calling this function"""
+        # Get point actuators
+        force_set = self.tool.getModel().updForceSet()
+        point_actuators = [
+            force for force in force_set if force.getName() in _POINT_ACTUATORS
+        ]
+        if not point_actuators:
+            return
+
+        # Get the body of application
+        body_str = point_actuators[0].get_body()
+
+        # Get the CoM of that body in the input model
+        body = self.tool.getModel().getBodySet().get(body_str)
+        com = body.getMassCenter()
+
+        # Update the application point of each point actuator
+        for point_actuator in point_actuators:
+            point_actuator.set_point(com)
+
+    def set_parameters(self, timerange, output):
+        """Common interface for setting timerange and output directory."""
+        if timerange is None:
+            timerange = _TIMERANGE
+        self.tool.setInitialTime(timerange[0])
+        self.tool.setFinalTime(timerange[1])
+        self.tool.setResultsDir(output)
+
+    def run(self) -> bool:
+        """Run tool."""
+        return self.tool.run()
+
+
+class _RRAToolWrapper(_AbstractToolWrapper):
+    """Concrete RRATool"""
+
+    tool: opensim.RRATool
+
+    def initialise_tool(self):
+        self.tool = opensim.RRATool(self.settings)
+
+    def set_kinematics(self, kinematics):
+        """Set desired kinematics path"""
+        self.tool.setDesiredKinematicsFileName(kinematics)
+
+    def set_adjustment(self, adjust, body, model_out):
+        """Set RRA adjustment settings"""
+        self.tool.setAdjustCOMToReduceResiduals(adjust)
+        if not adjust:
+            return
+        self.tool.setAdjustedCOMBody(body)
+        self.tool.setOutputModelFileName(model_out)
+
+
+class _AnalyzeToolWrapper(_AbstractToolWrapper):
+    """Concrete AnalyzeTool
+
+    If no controls input is provided the tool ignores any controls specified in the settings file.
+    """
+
+    tool: opensim.AnalyzeTool
+
+    def initialise_tool(self):
+        self.tool = opensim.AnalyzeTool(self.settings)
+
+    def set_kinematics(self, kinematics):
+        """Choose between states and motion kinematics based on filename"""
+        ext = os.path.splitext(kinematics)
+        if ext == ".mot":
+            self.tool.setStatesFileName("")
+            self.tool.setCoordinatesFileName(kinematics)
+        elif ext == ".sto":
+            self.tool.setStatesFileName(kinematics)
+            self.tool.setCoordinatesFileName("")
+        else:
+            raise ValueError("Wrong format of input kinematics.")
+
+    def set_controls(self, controls):
+        """Add controls to the analysis"""
+        self.tool.setControlsFileName(controls)
+
+
 def run_rra(
+    settings: str,
+    model_in: str,
+    kinematics: str,
+    output: str,
+    grfs: str = "",
+    load: Optional[str] = None,
+    timerange: Optional[list] = None,
+    adjust: bool = False,
+    body: str = "torso",
+    model_out: Optional[str] = None,
+) -> bool:
+    """Run RRA
+
+    Allows easier modification of: input model, input kinematics, input grfs, output directory,
+    and timerange. Also allows for RRA-based model adjustment.
+    """
+
+    # General AbstractTool behaviour
+    rra_tool = _RRAToolWrapper(settings, model_in, output, grfs, load, timerange)
+
+    # RRA-specific settings
+    rra_tool.set_kinematics(kinematics)
+    rra_tool.set_adjustment(adjust, body, model_out)
+
+    # Run
+    return rra_tool.run()
+
+
+def run_analyze(
+    settings: str,
+    model_in: str,
+    kinematics: str,
+    output: str,
+    grfs: str = "",
+    load: Optional[str] = None,
+    controls: str = "",
+    timerange: Optional[list] = None,
+) -> bool:
+    """Run the analyze tool
+
+    Allows easier modification of: input model, input kinematics, input grfs, output directory,
+    timerange, and the use of a controls file."""
+
+    # General AbstractTool behaviour
+    analyze_tool = _AnalyzeToolWrapper(
+        settings, model_in, output, grfs, load, timerange
+    )
+
+    # Analyze-specific settings
+    analyze_tool.set_kinematics(kinematics)
+    analyze_tool.set_controls(controls)
+
+    # Run
+    return analyze_tool.run()
+
+
+def run_rra_old(
     settings: str,
     model_in: str,
     kinematics: str,
@@ -145,7 +363,7 @@ def run_rra(
         # Modify pelvis COM in actuators file
         actuators_in = tool.getForceSetFiles().get(0)  # What if there are none?
         actuators_out = os.path.join(temp_dir, "actuators.xml")
-        modify_rra_actuators(model_in, actuators_in, actuators_out)
+        _modify_actuators(model_in, actuators_in, actuators_out)
         tool.setForceSetFiles(opensim.ArrayStr(actuators_out, 1))  # type: ignore
 
         # Set model
