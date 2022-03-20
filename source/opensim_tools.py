@@ -237,6 +237,10 @@ class _ToolParameters:
     ik_filename = _DEFAULT_IK_FILENAME
     id_filename = _DEFAULT_ID_FILENAME
 
+    def __post_init__(self):
+        if self.model_out is None:
+            self.model_out = os.path.join(self.output, _DEFAULT_MODEL_OUT)
+
 
 def _run_tool(settings: str, parameters: _ToolParameters) -> bool:
     """Test docstring."""
@@ -431,8 +435,6 @@ class _RRAToolWrapper(_AbstractToolWrapper):
         self.tool.setAdjustCOMToReduceResiduals(adjust)
         if not adjust:
             return
-        if model_out is None:
-            model_out = os.path.join(output, _DEFAULT_MODEL_OUT)
         self.tool.setAdjustedCOMBody(body)
         self.tool.setOutputModelFileName(model_out)
 
