@@ -256,6 +256,7 @@ def _wrapper_factory(settings):
         opensim.InverseDynamicsTool: _IDToolWrapper,
         opensim.RRATool: _RRAToolWrapper,
         opensim.CMCTool: _CMCToolWrapper,
+        opensim.AnalyzeTool: _AnalyzeToolWrapper,
         opensim.ForwardTool: _ForwardToolWrapper,
     }
     tool = _get_tool_from_settings(settings)
@@ -284,10 +285,6 @@ class _ToolWrapper(ABC):
         """Run the tool"""
         return self.tool.run()
 
-    @abstractmethod
-    def set_kinematics(self, kinematics):
-        """Abstract method for setting kinematics to track"""
-
 
 class _IKToolWrapper(_ToolWrapper):
 
@@ -307,31 +304,9 @@ class _IKToolWrapper(_ToolWrapper):
         )
 
 
-class _IDToolWrapper(_ToolWrapper):
+class _ForceToolWrapper(_ToolWrapper):
 
-    tool: opensim.InverseDynamicsTool
-
-    def create(self):
-        self.tool = opensim.InverseDynamicsTool(self.settings, False)
-
-    def setup(self, parameters):
-        self.set_generic_parameters(
-            parameters.model_in,
-            parameters.kinematics,
-            parameters.output,
-            parameters.id_filename,
-            parameters.timerange,
-        )
-        self.set_grfs(parameters.grfs, parameters.load)
-
-    def set_generic_parameters(self, model_in, kinematics, output, filename, timerange):
-        """Assign parameters for running the ID tool"""
-        self.tool.setModelFileName(model_in)
-        self.tool.setResultsDir(output)
-        self.tool.setOutputGenForceFileName(filename)
-        self.tool.setStartTime(timerange[0])
-        self.tool.setEndTime(timerange[1])
-        self.tool.setCoordinatesFileName(kinematics)
+    tool: opensim.InverseDynamicsTool or opensim.AbstractTool
 
     def set_grfs(self, grfs, load):
         """Assign force-related parameters for running the ID Tool"""
@@ -341,7 +316,24 @@ class _IDToolWrapper(_ToolWrapper):
         loads.setDataFileName(grfs)
 
 
-class _AbstractToolWrapper(_ToolWrapper):
+class _IDToolWrapper(_ForceToolWrapper):
+
+    tool: opensim.InverseDynamicsTool
+
+    def create(self):
+        self.tool = opensim.InverseDynamicsTool(self.settings, False)
+
+    def setup(self, parameters):
+        self.tool.setModelFileName(parameters.model_in)
+        self.tool.setResultsDir(parameters.output)
+        self.tool.setOutputGenForceFileName(parameters.filename)
+        self.tool.setStartTime(parameters.timerange[0])
+        self.tool.setEndTime(parameters.timerange[1])
+        self.tool.setCoordinatesFileName(parameters.kinematics)
+        self.set_grfs(parameters.grfs, parameters.load)
+
+
+class _AbstractToolWrapper(_ForceToolWrapper):
     """Abstract interface for tools which inherit from opensim.AbtractTool
 
     A note on the behaviour of optional arguments:
@@ -372,10 +364,7 @@ class _AbstractToolWrapper(_ToolWrapper):
     def pre_load(self, model_in: str, grfs: str = "", load: Optional[str] = None):
         """Assigning of variable parameters (model, grfs) before loading."""
         self.tool.setModelFilename(model_in)
-        if load is not None:
-            self.tool.setExternalLoadsFileName(load)
-        loads = self.tool.updExternalLoads()
-        loads.setDataFileName(grfs)
+        self.set_grfs(grfs, load)
 
     def load(self) -> opensim.Model:
         """Common interface for loading a model & updating model forces."""
@@ -411,6 +400,10 @@ class _AbstractToolWrapper(_ToolWrapper):
         self.tool.setInitialTime(timerange[0])
         self.tool.setFinalTime(timerange[1])
         self.tool.setResultsDir(output)
+
+    @abstractmethod
+    def set_kinematics(self, kinematics):
+        """Abstract method for setting kinematics for OpenSim AbstractTool inheritors"""
 
 
 class _RRAToolWrapper(_AbstractToolWrapper):
