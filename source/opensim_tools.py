@@ -8,6 +8,8 @@ from typing import Optional
 
 import opensim
 
+import user_settings
+
 _SUPPORTED_TOOLS = [
     "InverseKinematicsTool",
     "RRATool",
@@ -36,38 +38,37 @@ def run_tool_from_settings(settings: str) -> bool:
     return tool.run()
 
 
-def run_ik(settings: str, model: str, markers: str, output: str, **kwargs) -> bool:
+def run_ik(model: str, markers: str, output: str, settings="", **kwargs) -> bool:
     """Run the OpenSim Inverse Kinematics tool.
 
     Returns boolean which indicates tool success.
 
     Required args:
-        settings: Path to an XML setting file for the OpenSim IK Tool.
         model: Path to input OpenSim model.
         markers: Path to input markers (.trc) file.
         output: Path to (existing) desired results directory.
+        settings: Path to an XML setting file for the OpenSim IK Tool. This can be
+            specified manually, or alternatively loaded from user_settings.py
 
     Optional args:
         timerange: Tuple of size 2 containing [start_time, end_time] for the tool.
         filename: A string specifying the name of the output file in the output directory.
     """
 
-    parameters = _ToolParameters(
-        model_in=model, kinematics=markers, output=output, **kwargs
-    )
-    return _run_tool(settings, parameters)
+    return _run_tool("IK", model, markers, output, settings, **kwargs)
 
 
-def run_id(settings: str, model: str, kinematics: str, output: str, **kwargs):
+def run_id(model: str, kinematics: str, output: str, settings="", **kwargs):
     """Run the OpenSim Inverse Dynamics tool.
 
     Returns boolean which indicates tool success.
 
     Required args:
-        settings: Path to an XML setting file for the OpenSim ID Tool.
         model: Path to input OpenSim model.
         kinematics: Path to input kinematics file.
         output: Path to (existing) desired results directory.
+        settings: Path to an XML setting file for the OpenSim ID Tool. This can be
+            specified manually, or alternatively loaded from user_settings.py
 
     Optional args:
         grfs: Path to input GRF file.
@@ -77,22 +78,20 @@ def run_id(settings: str, model: str, kinematics: str, output: str, **kwargs):
         filename: A string specifying the name of the output file in the output directory.
     """
 
-    parameters = _ToolParameters(
-        model_in=model, kinematics=kinematics, output=output, **kwargs
-    )
-    return _run_tool(settings, parameters)
+    return _run_tool("ID", model, kinematics, output, settings, **kwargs)
 
 
-def run_rra(settings: str, model: str, motion: str, output: str, **kwargs) -> bool:
+def run_rra(model: str, motion: str, output: str, settings="", **kwargs) -> bool:
     """Run the OpenSim RRA tool.
 
     Returns boolean which indicates tool success.
 
     Required args:
-        settings: Path to an XML setting file for the OpenSim RRA Tool.
         model: Path to input OpenSim model.
         motion: Path to input motion data, either a kinematics (.mot) or states (.sto) file.
         output: Path to (existing) desired results directory.
+        settings: Path to an XML setting file for the OpenSim RRA Tool. This can be
+            specified manually, or alternatively loaded from user_settings.py
 
     Optional args:
         grfs: Path to input GRF file.
@@ -106,22 +105,20 @@ def run_rra(settings: str, model: str, motion: str, output: str, **kwargs) -> bo
             actuator names ("FX", "FY", "FZ") if needed.
     """
 
-    parameters = _ToolParameters(
-        model_in=model, kinematics=motion, output=output, **kwargs
-    )
-    return _run_tool(settings, parameters)
+    return _run_tool("RRA", model, motion, output, settings, **kwargs)
 
 
-def run_analyze(settings: str, model: str, motion: str, output: str, **kwargs) -> bool:
+def run_analyze(model: str, motion: str, output: str, settings="", **kwargs) -> bool:
     """Run the OpenSim Analyze tool.
 
     Returns boolean which indicates tool success.
 
     Required args:
-        settings: Path to an XML setting file for the OpenSim Analyze Tool.
         model: Path to input OpenSim model.
         motion: Path to input motion data, either a kinematics (.mot) or states (.sto) file.
         output: Path to (existing) desired results directory.
+        settings: Path to an XML setting file for the OpenSim Analyze Tool. This can be
+            specified manually, or alternatively loaded from user_settings.py
 
     Optional args:
         grfs: Path to input GRF file.
@@ -133,22 +130,20 @@ def run_analyze(settings: str, model: str, motion: str, output: str, **kwargs) -
             actuator names ("FX", "FY", "FZ") if needed.
     """
 
-    parameters = _ToolParameters(
-        model_in=model, kinematics=motion, output=output, **kwargs
-    )
-    return _run_tool(settings, parameters)
+    return _run_tool("Analyze", model, motion, output, settings, **kwargs)
 
 
-def run_cmc(settings: str, model: str, motion: str, output: str, **kwargs) -> bool:
+def run_cmc(model: str, motion: str, output: str, settings="", **kwargs) -> bool:
     """Run the OpenSim CMC tool.
 
     Returns boolean which indicates tool success.
 
     Required args:
-        settings: Path to an XML setting file for the OpenSim CMC Tool.
         model: Path to input OpenSim model.
         motion: Path to input motion data, either a kinematics (.mot) or states (.sto) file.
         output: Path to (existing) desired results directory.
+        settings: Path to an XML setting file for the OpenSim CMC Tool. This can be
+            specified manually, or alternatively loaded from user_settings.py
 
     Optional args:
         grfs: Path to input GRF file.
@@ -162,28 +157,23 @@ def run_cmc(settings: str, model: str, motion: str, output: str, **kwargs) -> bo
             actuator names ("FX", "FY", "FZ") if needed.
     """
 
-    parameters = _ToolParameters(
-        model_in=model,
-        kinematics=motion,
-        output=output,
-        **kwargs,
-    )
-    return _run_tool(settings, parameters)
+    return _run_tool("CMC", model, motion, output, settings, **kwargs)
 
 
 def run_fd(
-    settings: str, model: str, states: str, controls: str, output: str, **kwargs
+    model: str, states: str, controls: str, output: str, settings="", **kwargs
 ) -> bool:
     """Run the OpenSim Forward Dynamics tool.
 
     Returns boolean which indicates tool success.
 
     Required args:
-        settings: Path to an XML setting file for the OpenSim Forward Dynamics Tool.
         model: Path to input OpenSim model.
         states: Path to input states file.
         controls: Path to input controls file
         output: Path to (existing) desired results directory.
+        settings: Path to an XML setting file for the OpenSim FD Tool. This can be
+            specified manually, or alternatively loaded from user_settings.py
 
     Optional args:
         grfs: Path to input GRF file.
@@ -194,14 +184,7 @@ def run_fd(
             actuator names ("FX", "FY", "FZ") if needed.
     """
 
-    parameters = _ToolParameters(
-        model_in=model,
-        kinematics=states,
-        output=output,
-        controls=controls,
-        **kwargs,
-    )
-    return _run_tool(settings, parameters)
+    return _run_tool("FD", model, states, output, settings, controls=controls, **kwargs)
 
 
 def _get_tool_from_settings(settings: str):
@@ -216,6 +199,20 @@ def _get_tool_from_settings(settings: str):
 def _get_classname_from_xml(xml: ET.ElementTree) -> str:
     root = xml.getroot()
     return root[0].tag
+
+
+def _parse_settings(attribute: str, settings: str) -> str:
+    """Determine settings file location based on user input.
+
+    Preference is given to any settings location specified as an argument. Failing
+    that, we check the user_settings.py file. If this fails an exception is raised."""
+
+    if not settings:
+        user_default = getattr(user_settings, attribute)
+        if user_default is None:
+            raise ValueError("No settings file provided.")
+        settings = user_default
+    return settings
 
 
 @dataclass
@@ -242,9 +239,18 @@ class _ToolParameters:
             self.model_out = os.path.join(self.output, _DEFAULT_MODEL_OUT)
 
 
-def _run_tool(settings: str, parameters: _ToolParameters) -> bool:
+def _run_tool(
+    tool_type: str,
+    model: str,
+    input_motion: str,
+    output_dir: str,
+    settings: str,
+    **kwargs,
+) -> bool:
     """Test docstring."""
+    settings = _parse_settings(tool_type, settings)
     wrapper = _wrapper_factory(settings)
+    parameters = _ToolParameters(model, input_motion, output_dir, **kwargs)
     wrapper.setup(parameters)
     return wrapper.run()
 
