@@ -422,15 +422,13 @@ class _RRAToolWrapper(_AbstractToolWrapper):
         self.tool = opensim.RRATool(self.settings, False)
 
     def additional_setup(self, parameters):
-        self.set_adjustment(
-            parameters.adjust, parameters.body, parameters.output, parameters.model_out
-        )
+        self.set_adjustment(parameters.adjust, parameters.body, parameters.model_out)
 
     def set_kinematics(self, kinematics):
         """Set desired kinematics path"""
         self.tool.setDesiredKinematicsFileName(kinematics)
 
-    def set_adjustment(self, adjust, body, output, model_out):
+    def set_adjustment(self, adjust, body, model_out):
         """Set RRA adjustment settings"""
         self.tool.setAdjustCOMToReduceResiduals(adjust)
         if not adjust:
