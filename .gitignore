@@ -6,3 +6,4 @@
 typings
 .python_version
 .python-version
+*user_defaults.py
