@@ -1,5 +1,4 @@
 """Python wrappers for a subset of the suite of OpenSim tools."""
-import math
 import os
 import xml.etree.ElementTree as ET
 from abc import ABC, abstractmethod
@@ -8,7 +7,7 @@ from typing import Optional
 
 import opensim
 
-import user_settings
+import user_defaults
 
 _SUPPORTED_TOOLS = [
     "InverseKinematicsTool",
@@ -17,12 +16,6 @@ _SUPPORTED_TOOLS = [
     "AnalyzeTool",
     "InverseDynamicsTool",
 ]
-_DEFAULT_ADJUSTMENT_BODY = "torso"
-_DEFAULT_MODEL_OUT = "model_adjusted.osim"
-_DEFAULT_POINT_ACTUATORS = ("FX", "FY", "FZ")
-_DEFAULT_TIMERANGE = (-math.inf, math.inf)
-_DEFAULT_IK_FILENAME = "ik.mot"
-_DEFAULT_ID_FILENAME = "id.sto"
 
 
 def run_tool_from_settings(settings: str) -> bool:
@@ -55,7 +48,8 @@ def run_ik(model: str, markers: str, output: str, settings="", **kwargs) -> bool
         filename: A string specifying the name of the output file in the output directory.
     """
 
-    return _run_tool("IK", model, markers, output, settings, **kwargs)
+    settings = _parse_settings(settings, user_defaults.IK_SETTINGS)
+    return _run_tool(model, markers, output, settings, **kwargs)
 
 
 def run_id(model: str, kinematics: str, output: str, settings="", **kwargs):
@@ -78,7 +72,8 @@ def run_id(model: str, kinematics: str, output: str, settings="", **kwargs):
         filename: A string specifying the name of the output file in the output directory.
     """
 
-    return _run_tool("ID", model, kinematics, output, settings, **kwargs)
+    settings = _parse_settings(settings, user_defaults.ID_SETTINGS)
+    return _run_tool(model, kinematics, output, settings, **kwargs)
 
 
 def run_rra(model: str, motion: str, output: str, settings="", **kwargs) -> bool:
@@ -105,7 +100,8 @@ def run_rra(model: str, motion: str, output: str, settings="", **kwargs) -> bool
             actuator names ("FX", "FY", "FZ") if needed.
     """
 
-    return _run_tool("RRA", model, motion, output, settings, **kwargs)
+    settings = _parse_settings(settings, user_defaults.RRA_SETTINGS)
+    return _run_tool(model, motion, output, settings, **kwargs)
 
 
 def run_analyze(model: str, motion: str, output: str, settings="", **kwargs) -> bool:
@@ -130,7 +126,8 @@ def run_analyze(model: str, motion: str, output: str, settings="", **kwargs) -> 
             actuator names ("FX", "FY", "FZ") if needed.
     """
 
-    return _run_tool("Analyze", model, motion, output, settings, **kwargs)
+    settings = _parse_settings(settings, user_defaults.ANALYZE_SETTINGS)
+    return _run_tool(model, motion, output, settings, **kwargs)
 
 
 def run_cmc(model: str, motion: str, output: str, settings="", **kwargs) -> bool:
@@ -157,7 +154,8 @@ def run_cmc(model: str, motion: str, output: str, settings="", **kwargs) -> bool
             actuator names ("FX", "FY", "FZ") if needed.
     """
 
-    return _run_tool("CMC", model, motion, output, settings, **kwargs)
+    settings = _parse_settings(settings, user_defaults.CMC_SETTINGS)
+    return _run_tool(model, motion, output, settings, **kwargs)
 
 
 def run_fd(
@@ -184,7 +182,8 @@ def run_fd(
             actuator names ("FX", "FY", "FZ") if needed.
     """
 
-    return _run_tool("FD", model, states, output, settings, controls=controls, **kwargs)
+    settings = _parse_settings(settings, user_defaults.FD_SETTINGS)
+    return _run_tool(model, states, output, settings, controls=controls, **kwargs)
 
 
 def _get_tool_from_settings(settings: str):
@@ -201,18 +200,17 @@ def _get_classname_from_xml(xml: ET.ElementTree) -> str:
     return root[0].tag
 
 
-def _parse_settings(attribute: str, settings: str) -> str:
+def _parse_settings(arg_settings: str, default_settings: Optional[str] = None) -> str:
     """Determine settings file location based on user input.
 
     Preference is given to any settings location specified as an argument. Failing
     that, we check the user_settings.py file. If this fails an exception is raised."""
 
-    if not settings:
-        user_default = getattr(user_settings, attribute)
-        if user_default is None:
-            raise ValueError("No settings file provided.")
-        settings = user_default
-    return settings
+    if arg_settings:
+        return arg_settings
+    if default_settings is not None:
+        return default_settings
+    raise ValueError("No settings file provided.")
 
 
 @dataclass
@@ -224,23 +222,22 @@ class _ToolParameters:
     output: str
     grfs: str = ""
     load: Optional[str] = None
-    timerange: tuple = _DEFAULT_TIMERANGE
+    timerange: tuple = user_defaults.TIMERANGE
     adjust: bool = False
-    body: str = _DEFAULT_ADJUSTMENT_BODY
+    body: str = user_defaults.ADJUSTMENT_BODY
     model_out: Optional[str] = None
-    point_actuator_names: tuple = _DEFAULT_POINT_ACTUATORS
+    point_actuator_names: tuple = user_defaults.POINT_ACTUATORS
     controls: str = ""
     constraints: str = ""
-    ik_filename = _DEFAULT_IK_FILENAME
-    id_filename = _DEFAULT_ID_FILENAME
+    ik_filename = user_defaults.IK_FILENAME
+    id_filename = user_defaults.ID_FILENAME
 
     def __post_init__(self):
         if self.model_out is None:
-            self.model_out = os.path.join(self.output, _DEFAULT_MODEL_OUT)
+            self.model_out = os.path.join(self.output, user_defaults.MODEL_OUT)
 
 
 def _run_tool(
-    tool_type: str,
     model: str,
     input_motion: str,
     output_dir: str,
@@ -248,7 +245,6 @@ def _run_tool(
     **kwargs,
 ) -> bool:
     """Test docstring."""
-    settings = _parse_settings(tool_type, settings)
     wrapper = _wrapper_factory(settings)
     parameters = _ToolParameters(model, input_motion, output_dir, **kwargs)
     wrapper.setup(parameters)
