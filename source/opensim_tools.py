@@ -214,27 +214,78 @@ def _parse_settings(arg_settings: str, default_settings: Optional[str] = None) -
 
 
 @dataclass
-class _ToolParameters:
-    """A class for storing the potential fields which can be input to the OpenSim tool wrappers."""
+class _GenericToolParameters(ABC):
+    """A dataclass for storing the generic parameters which are shared by all tools."""
 
     model_in: str
     kinematics: str
     output: str
+    timerange: tuple = user_defaults.TIMERANGE
+
+
+@dataclass
+class _IKToolParameters(_GenericToolParameters):
+    """Parameters specific to the IK tool."""
+
+    ik_filename = user_defaults.IK_FILENAME
+
+
+@dataclass
+class _ForceToolParameters(_GenericToolParameters):
+    """Parameters to specific to tools which can handle external forces."""
+
     grfs: str = ""
     load: Optional[str] = None
-    timerange: tuple = user_defaults.TIMERANGE
+
+
+@dataclass
+class _IDToolParameters(_ForceToolParameters):
+    """Parameters specific to the ID tool."""
+
+    id_filename = user_defaults.ID_FILENAME
+
+
+@dataclass
+class _AbstractToolParameters(_ForceToolParameters):
+    """Parameters specific to tool which inherit from opensim.AbstractTool."""
+
+    point_actuator_names: tuple = user_defaults.POINT_ACTUATORS
+
+
+@dataclass
+class _RRAToolParameters(_AbstractToolParameters):
+    """Parameters (and a special method) specific to the RRA tool."""
+
     adjust: bool = False
     body: str = user_defaults.ADJUSTMENT_BODY
     model_out: Optional[str] = None
-    point_actuator_names: tuple = user_defaults.POINT_ACTUATORS
-    controls: str = ""
-    constraints: str = ""
-    ik_filename = user_defaults.IK_FILENAME
-    id_filename = user_defaults.ID_FILENAME
 
     def __post_init__(self):
-        if self.model_out is None:
-            self.model_out = os.path.join(self.output, user_defaults.MODEL_OUT)
+        if self.model_out is not None:
+            return
+        self.model_out = os.path.join(self.output, user_defaults.MODEL_OUT)
+
+
+@dataclass
+class _CMCToolParameters(_AbstractToolParameters):
+    """Parameters specific to the CMC tool."""
+
+    controls: str = ""
+    constraints: str = ""
+
+
+@dataclass
+class _AnalyzeToolParameters(_AbstractToolParameters):
+    """Parameters specific to the Analyze tool."""
+
+    controls: str = ""
+
+
+@dataclass
+class _ForwardToolParameters(_AbstractToolParameters):
+    """Parameters specific to the Forward tool."""
+
+    controls: str = ""
 
 
 def _run_tool(
@@ -245,8 +296,10 @@ def _run_tool(
     **kwargs,
 ) -> bool:
     """Test docstring."""
-    wrapper = _wrapper_factory(settings)
-    parameters = _ToolParameters(model, input_motion, output_dir, **kwargs)
+    tool = _get_tool_from_settings(settings)
+    wrapper = _wrapper_factory(tool)
+    parameter_class = _parameter_factory(tool)
+    parameters = parameter_class(model, input_motion, output_dir, **kwargs)
     wrapper.setup(parameters)
     return wrapper.run()
 
@@ -264,6 +317,18 @@ def _wrapper_factory(settings):
     tool = _get_tool_from_settings(settings)
     wrapper = wrappers[tool]
     return wrapper(settings)
+
+
+def _parameter_factory(tool):
+    parameter_classes = {
+        opensim.InverseKinematicsTool: _IKToolParameters,
+        opensim.InverseDynamicsTool: _IDToolParameters,
+        opensim.RRATool: _RRAToolParameters,
+        opensim.CMCTool: _CMCToolParameters,
+        opensim.AnalyzeTool: _AnalyzeToolParameters,
+        opensim.ForwardTool: _ForwardToolParameters,
+    }
+    return parameter_classes[tool]
 
 
 class _ToolWrapper(ABC):
