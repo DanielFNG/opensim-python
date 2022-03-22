@@ -15,8 +15,8 @@ class _GenericToolParameters(ABC):
     """A dataclass for storing the generic parameters which are shared by all tools."""
 
     model_in: str
-    kinematics: str
-    output: str
+    motion: str
+    output_dir: str
     timerange: tuple = user_defaults.TIMERANGE
 
 
@@ -60,15 +60,15 @@ class RRAToolParameters(_AbstractToolParameters):
     def __post_init__(self):
         if self.model_out is not None:
             return
-        self.model_out = os.path.join(self.output, user_defaults.MODEL_OUT)
+        self.model_out = os.path.join(self.output_dir, user_defaults.MODEL_OUT)
 
 
 @dataclass
 class CMCToolParameters(_AbstractToolParameters):
     """Parameters specific to the CMC tool."""
 
-    controls: str = ""
-    constraints: str = ""
+    control_constraints: str = ""
+    rra_constraints: str = ""
 
 
 @dataclass
@@ -133,10 +133,10 @@ class IKToolWrapper(_ToolWrapper):
         self.tool.set_model_file(parameters.model_in)
         self.tool.setStartTime(parameters.timerange[0])
         self.tool.setEndTime(parameters.timerange[1])
-        self.tool.setMarkerDataFileName(parameters.kinematics)
-        self.tool.setResultsDir(parameters.output)
+        self.tool.setMarkerDataFileName(parameters.motion)
+        self.tool.setResultsDir(parameters.output_dir)
         self.tool.setOutputMotionFileName(
-            os.path.join(parameters.output, parameters.ik_filename)
+            os.path.join(parameters.output_dir, parameters.ik_filename)
         )
 
 
@@ -163,11 +163,11 @@ class IDToolWrapper(_ForceToolWrapper):
 
     def setup(self, parameters):
         self.tool.setModelFileName(parameters.model_in)
-        self.tool.setResultsDir(parameters.output)
+        self.tool.setResultsDir(parameters.output_dir)
         self.tool.setOutputGenForceFileName(parameters.filename)
         self.tool.setStartTime(parameters.timerange[0])
         self.tool.setEndTime(parameters.timerange[1])
-        self.tool.setCoordinatesFileName(parameters.kinematics)
+        self.tool.setCoordinatesFileName(parameters.motion)
         self.set_grfs(parameters.grfs, parameters.load)
 
 
@@ -185,8 +185,8 @@ class _AbstractToolWrapper(_ForceToolWrapper):
         self.pre_load(parameters.model_in, parameters.grfs, parameters.load)
         self.load()
         self.modify_actuators(parameters.point_actuator_names)
-        self.set_kinematics(parameters.kinematics)
-        self.set_generic_parameters(parameters.timerange, parameters.output)
+        self.set_kinematics(parameters.motion)
+        self.set_generic_parameters(parameters.timerange, parameters.output_dir)
 
     @abstractmethod
     def additional_setup(self, parameters):
@@ -226,11 +226,11 @@ class _AbstractToolWrapper(_ForceToolWrapper):
         for point_actuator in point_actuators:
             point_actuator.set_point(com)
 
-    def set_generic_parameters(self, timerange, output):
+    def set_generic_parameters(self, timerange, output_dir):
         """Common interface for setting timerange and output directory."""
         self.tool.setInitialTime(timerange[0])
         self.tool.setFinalTime(timerange[1])
-        self.tool.setResultsDir(output)
+        self.tool.setResultsDir(output_dir)
 
     @abstractmethod
     def set_kinematics(self, kinematics):
@@ -252,7 +252,7 @@ class RRAToolWrapper(_AbstractToolWrapper):
         self.tool.setDesiredKinematicsFileName(kinematics)
 
     def set_adjustment(self, adjust, body, model_out):
-        """Controls whether to adjust input model, & if so which body to adjust, & output path."""
+        """Controls whether to adjust input model, which body to adjust, & output model path."""
         self.tool.setAdjustCOMToReduceResiduals(adjust)
         if not adjust:
             return
@@ -297,15 +297,15 @@ class CMCToolWrapper(_AbstractToolWrapper):
         self.tool = opensim.CMCTool(self.settings, False)
 
     def additional_setup(self, parameters):
-        self.set_constraints(parameters.constraints, parameters.controls)
+        self.set_constraints(parameters.control_constraints, parameters.rra_constraints)
 
     def set_kinematics(self, kinematics):
         self.tool.setDesiredKinematicsFileName(kinematics)
 
-    def set_constraints(self, constraints, controls):
+    def set_constraints(self, control_constraints, rra_constraints):
         """Set constraints from file and/or an RRA controls file."""
-        self.tool.setConstraintsFileName(constraints)
-        self.tool.setRRAControlsFileName(controls)
+        self.tool.setConstraintsFileName(control_constraints)
+        self.tool.setRRAControlsFileName(rra_constraints)
 
 
 class ForwardToolWrapper(_AbstractToolWrapper):
