@@ -1,21 +1,20 @@
 """Python wrappers for a subset of the suite of OpenSim tools."""
-import os
 import xml.etree.ElementTree as ET
-from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from typing import Optional
 
 import opensim
 
 import user_defaults
+import wrapping
 
-_SUPPORTED_TOOLS = [
-    "InverseKinematicsTool",
-    "RRATool",
-    "CMCTool",
-    "AnalyzeTool",
-    "InverseDynamicsTool",
-]
+_TOOL_MAPPING = {
+    opensim.InverseKinematicsTool: (wrapping.IKToolParameters, wrapping.IKToolWrapper),
+    opensim.InverseDynamicsTool: (wrapping.IDToolParameters, wrapping.IDToolWrapper),
+    opensim.RRATool: (wrapping.RRAToolParameters, wrapping.RRAToolWrapper),
+    opensim.CMCTool: (wrapping.CMCToolParameters, wrapping.CMCToolWrapper),
+    opensim.ForwardTool: (wrapping.ForwardToolParameters, wrapping.ForwardToolWrapper),
+    opensim.AnalyzeTool: (wrapping.AnalyzeToolParameters, wrapping.AnalyzeToolWrapper),
+}
 
 
 def run_tool_from_settings(settings: str) -> bool:
@@ -187,15 +186,17 @@ def run_fd(
 
 
 def _get_tool_from_settings(settings: str):
-    """Parse settings file to find correct OpenSim tool function."""
+    """Parse an OpenSim tool settings file to find the corresponding class."""
     xml = ET.parse(settings)
     name = _get_classname_from_xml(xml)
-    if name not in _SUPPORTED_TOOLS:
-        raise ValueError(f"Tool ({name}) not supported.")
-    return getattr(opensim, name)
+    tool = getattr(opensim, name)
+    if tool not in _TOOL_MAPPING:
+        raise ValueError("Unsupported tool.")
+    return tool
 
 
 def _get_classname_from_xml(xml: ET.ElementTree) -> str:
+    """Get the class of an OpenSim object from its XML representation."""
     root = xml.getroot()
     return root[0].tag
 
@@ -204,88 +205,14 @@ def _parse_settings(arg_settings: str, default_settings: Optional[str] = None) -
     """Determine settings file location based on user input.
 
     Preference is given to any settings location specified as an argument. Failing
-    that, we check the user_settings.py file. If this fails an exception is raised."""
+    that, we check the user_settings.py file. If this fails an exception is raised.
+    """
 
     if arg_settings:
         return arg_settings
     if default_settings is not None:
         return default_settings
     raise ValueError("No settings file provided.")
-
-
-@dataclass
-class _GenericToolParameters(ABC):
-    """A dataclass for storing the generic parameters which are shared by all tools."""
-
-    model_in: str
-    kinematics: str
-    output: str
-    timerange: tuple = user_defaults.TIMERANGE
-
-
-@dataclass
-class _IKToolParameters(_GenericToolParameters):
-    """Parameters specific to the IK tool."""
-
-    ik_filename = user_defaults.IK_FILENAME
-
-
-@dataclass
-class _ForceToolParameters(_GenericToolParameters):
-    """Parameters to specific to tools which can handle external forces."""
-
-    grfs: str = ""
-    load: Optional[str] = None
-
-
-@dataclass
-class _IDToolParameters(_ForceToolParameters):
-    """Parameters specific to the ID tool."""
-
-    id_filename = user_defaults.ID_FILENAME
-
-
-@dataclass
-class _AbstractToolParameters(_ForceToolParameters):
-    """Parameters specific to tool which inherit from opensim.AbstractTool."""
-
-    point_actuator_names: tuple = user_defaults.POINT_ACTUATORS
-
-
-@dataclass
-class _RRAToolParameters(_AbstractToolParameters):
-    """Parameters (and a special method) specific to the RRA tool."""
-
-    adjust: bool = False
-    body: str = user_defaults.ADJUSTMENT_BODY
-    model_out: Optional[str] = None
-
-    def __post_init__(self):
-        if self.model_out is not None:
-            return
-        self.model_out = os.path.join(self.output, user_defaults.MODEL_OUT)
-
-
-@dataclass
-class _CMCToolParameters(_AbstractToolParameters):
-    """Parameters specific to the CMC tool."""
-
-    controls: str = ""
-    constraints: str = ""
-
-
-@dataclass
-class _AnalyzeToolParameters(_AbstractToolParameters):
-    """Parameters specific to the Analyze tool."""
-
-    controls: str = ""
-
-
-@dataclass
-class _ForwardToolParameters(_AbstractToolParameters):
-    """Parameters specific to the Forward tool."""
-
-    controls: str = ""
 
 
 def _run_tool(
@@ -295,277 +222,24 @@ def _run_tool(
     settings: str,
     **kwargs,
 ) -> bool:
-    """Test docstring."""
+    """Run the wrapper for the OpenSim tool specified by the input settings file & parameters."""
     tool = _get_tool_from_settings(settings)
-    wrapper = _wrapper_factory(tool)
-    parameter_class = _parameter_factory(tool)
-    parameters = parameter_class(model, input_motion, output_dir, **kwargs)
+    wrapper = _wrapper_factory(tool, settings)
+    parameters = _parameter_factory(
+        tool, model=model, kinematics=input_motion, output=output_dir
+    )
     wrapper.setup(parameters)
     return wrapper.run()
 
 
-def _wrapper_factory(settings):
-    """Use settings file to create the appropriate _ToolWrapper"""
-    wrappers = {
-        opensim.InverseKinematicsTool: _IKToolWrapper,
-        opensim.InverseDynamicsTool: _IDToolWrapper,
-        opensim.RRATool: _RRAToolWrapper,
-        opensim.CMCTool: _CMCToolWrapper,
-        opensim.AnalyzeTool: _AnalyzeToolWrapper,
-        opensim.ForwardTool: _ForwardToolWrapper,
-    }
-    tool = _get_tool_from_settings(settings)
-    wrapper = wrappers[tool]
-    return wrapper(settings)
+def _wrapper_factory(tool, settings):
+    """Constructs the wrapper for a given tool & settings file."""
+    return _TOOL_MAPPING[tool][0](settings)
 
 
-def _parameter_factory(tool):
-    parameter_classes = {
-        opensim.InverseKinematicsTool: _IKToolParameters,
-        opensim.InverseDynamicsTool: _IDToolParameters,
-        opensim.RRATool: _RRAToolParameters,
-        opensim.CMCTool: _CMCToolParameters,
-        opensim.AnalyzeTool: _AnalyzeToolParameters,
-        opensim.ForwardTool: _ForwardToolParameters,
-    }
-    return parameter_classes[tool]
-
-
-class _ToolWrapper(ABC):
-
-    tool: opensim.AbstractTool or opensim.Tool
-    settings: str
-
-    def __init__(self, settings: str):
-        self.settings = settings
-        self.create()
-
-    @abstractmethod
-    def create(self):
-        """Abstract method, subclasses will implement the appropriate tool constructor"""
-
-    @abstractmethod
-    def setup(self, parameters):
-        """Abstract tool encapsulating the necessary setup steps"""
-
-    def run(self) -> bool:
-        """Run the tool"""
-        return self.tool.run()
-
-
-class _IKToolWrapper(_ToolWrapper):
-
-    tool: opensim.InverseKinematicsTool
-
-    def create(self):
-        self.tool = opensim.InverseKinematicsTool(self.settings, False)
-
-    def setup(self, parameters):
-        self.tool.set_model_file(parameters.model_in)
-        self.tool.setStartTime(parameters.timerange[0])
-        self.tool.setEndTime(parameters.timerange[1])
-        self.tool.setMarkerDataFileName(parameters.kinematics)
-        self.tool.setResultsDir(parameters.output)
-        self.tool.setOutputMotionFileName(
-            os.path.join(parameters.output, parameters.ik_filename)
-        )
-
-
-class _ForceToolWrapper(_ToolWrapper):
-
-    tool: opensim.InverseDynamicsTool or opensim.AbstractTool
-
-    def set_grfs(self, grfs, load):
-        """Assign force-related parameters for running the ID Tool"""
-        if load is not None:
-            self.tool.setExternalLoadsFileName(load)
-        loads = self.tool.updExternalLoads()
-        loads.setDataFileName(grfs)
-
-
-class _IDToolWrapper(_ForceToolWrapper):
-
-    tool: opensim.InverseDynamicsTool
-
-    def create(self):
-        self.tool = opensim.InverseDynamicsTool(self.settings, False)
-
-    def setup(self, parameters):
-        self.tool.setModelFileName(parameters.model_in)
-        self.tool.setResultsDir(parameters.output)
-        self.tool.setOutputGenForceFileName(parameters.filename)
-        self.tool.setStartTime(parameters.timerange[0])
-        self.tool.setEndTime(parameters.timerange[1])
-        self.tool.setCoordinatesFileName(parameters.kinematics)
-        self.set_grfs(parameters.grfs, parameters.load)
-
-
-class _AbstractToolWrapper(_ForceToolWrapper):
-    """Abstract interface for tools which inherit from opensim.AbtractTool
-
-    A note on the behaviour of optional arguments:
-        If timerange = None, the [-inf, inf] is used, resulting in processing of the entire file.
-        If grfs = None, the tool is run with no GRFs.
-        If load = None, the default load file present in the tool is left as is.
-    """
-
-    tool: opensim.AbstractTool
-
-    def setup(self, parameters):
-        """Overall setup procedure."""
-        self.generic_setup(parameters)
-        self.additional_setup(parameters)
-
-    def generic_setup(self, parameters):
-        """Generic setup steps for any AnalyzeTool subclass."""
-        self.pre_load(parameters.model_in, parameters.grfs, parameters.load)
-        self.load()
-        self.modify_actuators(parameters.point_actuator_names)
-        self.set_kinematics(parameters.kinematics)
-        self.set_generic_parameters(parameters.timerange, parameters.output)
-
-    @abstractmethod
-    def additional_setup(self, parameters):
-        """Subclass-specific Additional steps required by subclasses of _AbstractToolWrapper."""
-
-    def pre_load(self, model_in: str, grfs: str = "", load: Optional[str] = None):
-        """Assigning of variable parameters (model, grfs) before loading."""
-        self.tool.setModelFilename(model_in)
-        self.set_grfs(grfs, load)
-
-    def load(self) -> opensim.Model:
-        """Common interface for loading a model & updating model forces."""
-        self.tool.loadModel(self.settings)
-        model = self.tool.getModel()
-        self.tool.updateModelForces(model, self.settings)
-        return model
-
-    def modify_actuators(self, point_actuator_names: Optional[list] = None):
-        """Adjust point actuator points of action to match those of the model
-
-        Model must have been loaded before calling this function"""
-
-        # Get the first valid point actuator from point_actuator_names
-        force_set = self.tool.getModel().updForceSet()
-        point_actuators = [
-            force for force in force_set if force.getName() in point_actuator_names
-        ]
-        if not point_actuators:
-            return
-        body_str = point_actuators[0].get_body()
-
-        # Get the CoM of that body in the input model
-        body = self.tool.getModel().getBodySet().get(body_str)
-        com = body.getMassCenter()
-
-        # Update the application point of each point actuator
-        for point_actuator in point_actuators:
-            point_actuator.set_point(com)
-
-    def set_generic_parameters(self, timerange, output):
-        """Common interface for setting timerange and output directory."""
-        self.tool.setInitialTime(timerange[0])
-        self.tool.setFinalTime(timerange[1])
-        self.tool.setResultsDir(output)
-
-    @abstractmethod
-    def set_kinematics(self, kinematics):
-        """Abstract method for setting kinematics for OpenSim AbstractTool inheritors"""
-
-
-class _RRAToolWrapper(_AbstractToolWrapper):
-    """Concrete RRATool"""
-
-    tool: opensim.RRATool
-
-    def create(self):
-        self.tool = opensim.RRATool(self.settings, False)
-
-    def additional_setup(self, parameters):
-        self.set_adjustment(parameters.adjust, parameters.body, parameters.model_out)
-
-    def set_kinematics(self, kinematics):
-        """Set desired kinematics path"""
-        self.tool.setDesiredKinematicsFileName(kinematics)
-
-    def set_adjustment(self, adjust, body, model_out):
-        """Set RRA adjustment settings"""
-        self.tool.setAdjustCOMToReduceResiduals(adjust)
-        if not adjust:
-            return
-        self.tool.setAdjustedCOMBody(body)
-        self.tool.setOutputModelFileName(model_out)
-
-
-class _AnalyzeToolWrapper(_AbstractToolWrapper):
-    """Concrete AnalyzeTool
-
-    If no controls input is provided the tool ignores any controls specified in the settings file.
-    """
-
-    tool: opensim.AnalyzeTool
-
-    def create(self):
-        self.tool = opensim.AnalyzeTool(self.settings, False)
-
-    def additional_setup(self, parameters):
-        if parameters.controls:
-            self.set_controls(parameters.controls)
-
-    def set_kinematics(self, kinematics):
-        """Choose between states and motion kinematics based on filename"""
-        ext = os.path.splitext(kinematics)
-        if ext == ".mot":
-            self.tool.setStatesFileName("")
-            self.tool.setCoordinatesFileName(kinematics)
-        elif ext == ".sto":
-            self.tool.setStatesFileName(kinematics)
-            self.tool.setCoordinatesFileName("")
-        else:
-            raise ValueError("Wrong format of input kinematics.")
-
-    def set_controls(self, controls):
-        """Add controls to the analysis"""
-        self.tool.setControlsFileName(controls)
-
-
-class _CMCToolWrapper(_AbstractToolWrapper):
-
-    tool: opensim.CMCTool
-
-    def create(self):
-        self.tool = opensim.CMCTool(self.settings, False)
-
-    def additional_setup(self, parameters):
-        self.set_constraints(parameters.constraints, parameters.controls)
-
-    def set_kinematics(self, kinematics):
-        """Set desired kinematics path"""
-        self.tool.setDesiredKinematicsFileName(kinematics)
-
-    def set_constraints(self, constraints, controls):
-        """Set constraints on actuator controls."""
-        self.tool.setConstraintsFileName(constraints)
-        self.tool.setRRAControlsFileName(controls)
-
-
-class _ForwardToolWrapper(_AbstractToolWrapper):
-
-    tool: opensim.ForwardTool
-
-    def create(self):
-        self.tool = opensim.ForwardTool(self.settings, False)
-
-    def additional_setup(self, parameters):
-        self.set_controls(parameters.controls)
-
-    def set_kinematics(self, kinematics):
-        """Set states, should include specified start time"""
-        self.tool.setStatesFileName(kinematics)
-
-    def set_controls(self, controls):
-        """Add controls to the analysis"""
-        self.tool.setControlsFileName(controls)
+def _parameter_factory(tool, **kwargs):
+    """Constructs the parameters object for a given tool & key word arguments."""
+    return _TOOL_MAPPING[tool][1](**kwargs)
 
 
 def main():
