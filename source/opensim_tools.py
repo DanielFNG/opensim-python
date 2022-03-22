@@ -7,15 +7,6 @@ import opensim
 import user_defaults
 import wrapping
 
-_TOOL_MAPPING = {
-    opensim.InverseKinematicsTool: (wrapping.IKToolParameters, wrapping.IKToolWrapper),
-    opensim.InverseDynamicsTool: (wrapping.IDToolParameters, wrapping.IDToolWrapper),
-    opensim.RRATool: (wrapping.RRAToolParameters, wrapping.RRAToolWrapper),
-    opensim.CMCTool: (wrapping.CMCToolParameters, wrapping.CMCToolWrapper),
-    opensim.ForwardTool: (wrapping.ForwardToolParameters, wrapping.ForwardToolWrapper),
-    opensim.AnalyzeTool: (wrapping.AnalyzeToolParameters, wrapping.AnalyzeToolWrapper),
-}
-
 
 def run_tool_from_settings(settings: str) -> bool:
     """Run an OpenSim tool from a supplied settings file.
@@ -25,8 +16,7 @@ def run_tool_from_settings(settings: str) -> bool:
     Requires args:
         settings: Path to an XML setting file for the desired OpenSim tool.
     """
-    tool_function = _get_tool_from_settings(settings)
-    tool = tool_function(settings)
+    tool = _get_tool_from_settings(settings)
     return tool.run()
 
 
@@ -51,7 +41,7 @@ def run_ik(model: str, markers: str, output: str, settings="", **kwargs) -> bool
     return _run_tool(model, markers, output, settings, **kwargs)
 
 
-def run_id(model: str, kinematics: str, output: str, settings="", **kwargs):
+def run_id(model: str, kinematics: str, output: str, settings="", **kwargs) -> bool:
     """Run the OpenSim Inverse Dynamics tool.
 
     Returns boolean which indicates tool success.
@@ -190,9 +180,8 @@ def _get_tool_from_settings(settings: str):
     xml = ET.parse(settings)
     name = _get_classname_from_xml(xml)
     tool = getattr(opensim, name)
-    if tool not in _TOOL_MAPPING:
-        raise ValueError("Unsupported tool.")
-    return tool
+    wrapping.check_tool_validity(tool)
+    return tool(settings)
 
 
 def _get_classname_from_xml(xml: ET.ElementTree) -> str:
@@ -224,25 +213,15 @@ def _run_tool(
 ) -> bool:
     """Run the wrapper for the OpenSim tool specified by the input settings file & parameters."""
     tool = _get_tool_from_settings(settings)
-    wrapper = _wrapper_factory(tool, settings)
-    parameters = _parameter_factory(
+    wrapper = wrapping.wrapper_factory(tool, settings)
+    parameters = wrapping.parameter_factory(
         tool, model=model, kinematics=input_motion, output=output_dir, **kwargs
     )
     wrapper.setup(parameters)
     return wrapper.run()
 
 
-def _wrapper_factory(tool, settings):
-    """Constructs the wrapper for a given tool & settings file."""
-    return _TOOL_MAPPING[tool][0](settings)
-
-
-def _parameter_factory(tool, **kwargs):
-    """Constructs the parameters object for a given tool & key word arguments."""
-    return _TOOL_MAPPING[tool][1](**kwargs)
-
-
-def main():
+def main() -> None:
     """Boilerplate."""
 
 

@@ -11,7 +11,7 @@ import user_defaults
 
 
 @dataclass
-class _GenericToolParameters(ABC):
+class _ToolParameters(ABC):
     """A dataclass for storing the generic parameters which are shared by all tools."""
 
     model_in: str
@@ -21,14 +21,14 @@ class _GenericToolParameters(ABC):
 
 
 @dataclass
-class IKToolParameters(_GenericToolParameters):
+class IKToolParameters(_ToolParameters):
     """Parameters specific to the IK tool."""
 
     ik_filename = user_defaults.IK_FILENAME
 
 
 @dataclass
-class _ForceToolParameters(_GenericToolParameters):
+class _ForceToolParameters(_ToolParameters):
     """Parameters to specific to tools which can handle external forces."""
 
     grfs: str = ""
@@ -97,7 +97,7 @@ class _ToolWrapper(ABC):
     run method is implemented concretely here.
     """
 
-    tool: opensim.AbstractTool or opensim.Tool
+    tool: opensim.Tool or opensim.AbstractTool
     settings: str
 
     def __init__(self, settings: str):
@@ -325,3 +325,31 @@ class ForwardToolWrapper(_AbstractToolWrapper):
     def set_controls(self, controls):
         """Specify input controls from file name."""
         self.tool.setControlsFileName(controls)
+
+
+_TOOL_MAPPING = {
+    opensim.InverseKinematicsTool: (IKToolParameters, IKToolWrapper),
+    opensim.InverseDynamicsTool: (IDToolParameters, IDToolWrapper),
+    opensim.RRATool: (RRAToolParameters, RRAToolWrapper),
+    opensim.CMCTool: (CMCToolParameters, CMCToolWrapper),
+    opensim.ForwardTool: (ForwardToolParameters, ForwardToolWrapper),
+    opensim.AnalyzeTool: (AnalyzeToolParameters, AnalyzeToolWrapper),
+}
+
+
+def check_tool_validity(tool) -> None:
+    """Checks if a given tool is supported."""
+    if tool not in _TOOL_MAPPING:
+        raise ValueError("Unsupported tool.")
+
+
+def wrapper_factory(tool, settings: str) -> _ToolWrapper:
+    """Constructs the wrapper for a given tool & settings file."""
+    check_tool_validity(tool)
+    return _TOOL_MAPPING[tool][0](settings)
+
+
+def parameter_factory(tool, **kwargs) -> _ToolParameters:
+    """Constructs the parameters object for a given tool & key word arguments."""
+    check_tool_validity(tool)
+    return _TOOL_MAPPING[tool][1](**kwargs)
