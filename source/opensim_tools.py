@@ -226,7 +226,7 @@ def _run_tool(
     tool = _get_tool_from_settings(settings)
     wrapper = _wrapper_factory(tool, settings)
     parameters = _parameter_factory(
-        tool, model=model, kinematics=input_motion, output=output_dir
+        tool, model=model, kinematics=input_motion, output=output_dir, **kwargs
     )
     wrapper.setup(parameters)
     return wrapper.run()
