@@ -3,11 +3,9 @@ representing the tool parameters."""
 import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Union
 
 import opensim
-
-import user_defaults
 
 
 @dataclass
@@ -17,72 +15,67 @@ class _ToolParameters(ABC):
     model_in: str
     motion: str
     output_dir: str
-    timerange: tuple = user_defaults.TIMERANGE
+    timerange: tuple
 
 
 @dataclass
 class IKToolParameters(_ToolParameters):
     """Parameters specific to the IK tool."""
 
-    ik_filename = user_defaults.IK_FILENAME
+    ik_filename: str
 
 
 @dataclass
 class _ForceToolParameters(_ToolParameters):
     """Parameters to specific to tools which can handle external forces."""
 
-    grfs: str = ""
-    load: Optional[str] = None
+    grfs: str
+    load: Union[str, None]
 
 
 @dataclass
 class IDToolParameters(_ForceToolParameters):
     """Parameters specific to the ID tool."""
 
-    id_filename = user_defaults.ID_FILENAME
+    id_filename: str
 
 
 @dataclass
 class _AbstractToolParameters(_ForceToolParameters):
     """Parameters specific to tool which inherit from opensim.AbstractTool."""
 
-    point_actuator_names: tuple = user_defaults.POINT_ACTUATORS
+    point_actuator_names: tuple
 
 
 @dataclass
 class RRAToolParameters(_AbstractToolParameters):
     """Parameters (and a special method) specific to the RRA tool."""
 
-    adjust: bool = False
-    body: str = user_defaults.ADJUSTMENT_BODY
-    model_out: Optional[str] = None
-
-    def __post_init__(self):
-        if self.model_out is not None:
-            return
-        self.model_out = os.path.join(self.output_dir, user_defaults.MODEL_OUT)
+    adjust: bool
+    body: str
+    model_out: str
 
 
 @dataclass
 class CMCToolParameters(_AbstractToolParameters):
     """Parameters specific to the CMC tool."""
 
-    control_constraints: str = ""
-    rra_constraints: str = ""
+    control_constraints: str
+    rra_constraints: str
 
 
 @dataclass
 class AnalyzeToolParameters(_AbstractToolParameters):
     """Parameters specific to the Analyze tool."""
 
-    controls: str = ""
+    controls: str
 
 
 @dataclass
 class ForwardToolParameters(_AbstractToolParameters):
     """Parameters specific to the Forward tool."""
 
-    controls: str = ""
+    controls: str
 
 
 class _ToolWrapper(ABC):
