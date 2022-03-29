@@ -20,7 +20,10 @@ def run_tool_from_settings(settings: str) -> bool:
     return tool.run()
 
 
-def run_ik(model: str, markers: str, output: str, settings="", **kwargs) -> bool:
+def run_ik(model: str, markers: str, output: str, 
+    settings=user_defaults.IK_SETTINGS, 
+    timerange: tuple = user_defaults.TIMERANGE, 
+    filename: str = user_defaults.IK_FILENAME) -> bool:
     """Run the OpenSim Inverse Kinematics tool.
 
     Returns boolean which indicates tool success.
@@ -29,16 +32,15 @@ def run_ik(model: str, markers: str, output: str, settings="", **kwargs) -> bool
         model: Path to input OpenSim model.
         markers: Path to input markers (.trc) file.
         output: Path to (existing) desired results directory.
-        settings: Path to an XML setting file for the OpenSim IK Tool. This can be
-            specified manually, or alternatively loaded from user_settings.py
 
     Optional args:
+        settings: Path to an XML setting file for the OpenSim IK Tool. This can be
+            specified manually, or alternatively loaded from user_settings.py.
         timerange: Tuple of size 2 containing [start_time, end_time] for the tool.
         filename: A string specifying the name of the output file in the output directory.
     """
 
-    settings = _parse_settings(settings, user_defaults.IK_SETTINGS)
-    return _run_tool(model, markers, output, settings, **kwargs)
+    return _run_tool(model, markers, output, settings, timerange, filename)
 
 
 def run_id(model: str, kinematics: str, output: str, settings="", **kwargs) -> bool:
