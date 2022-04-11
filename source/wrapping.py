@@ -165,7 +165,7 @@ class IDToolWrapper(_ForceToolWrapper):
 
 
 class _AbstractToolWrapper(_ForceToolWrapper):
-    """Abstract interface for tools which inherit from opensim.AbtractTool."""
+    """Abstract interface for tools which inherit from opensim.AbstractTool."""
 
     tool: opensim.AbstractTool
 

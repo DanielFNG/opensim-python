@@ -1,4 +1,15 @@
-"""Python wrappers for a subset of the suite of OpenSim tools."""
+"""Python interfaces for commonly used OpenSim tools.
+
+Low-level settings are read from a supplied XML settings file, i.e. those used to run
+the tool in the OpenSim API. The functions in this module allow for overriding common
+inputs e.g. the input model, the input data, or certain settings. See the function
+docstrings below for more details of supported outputs.
+
+Users can specify certain defaults in the user_defaults.py file if necessary. This is
+useful if a particular settings file is used often enough to want to avoid having
+to include it as an explicit argument. Any parameters passed as function parameters
+will override any defaults in the user_defaults.py file.
+"""
 import xml.etree.ElementTree as ET
 from typing import Optional
 
